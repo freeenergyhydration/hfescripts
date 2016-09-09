@@ -1,0 +1,129 @@
+#!/usr/bin/perl -w
+use strict;
+
+my $n_prot_atoms=$ARGV[0];
+
+my $gro="system.gro";
+my $space=0.35;
+my $min_sep=0.4;
+
+my $space2=$space*$space;
+my $min_sep2=$min_sep*$min_sep;
+
+
+my $out="space.gro";
+
+my @p_cm;
+
+open(INP,$gro) or die;
+open(OUT,">$out");
+my $line=<INP>;
+print OUT $line;
+$line=<INP>;
+print OUT $line;
+my $n_atoms=int($line);
+
+my @r_prot;
+for my $n (1..$n_prot_atoms) {
+  $line=<INP>;
+  print OUT $line;
+  for my $i (0..2) {
+    my $x=substr $line,20+8*$i,8;
+    $x*=1.0;
+    $p_cm[$i]+=$x;
+    push @r_prot,$x;
+  }
+}
+
+for my $i (0..2) {
+  $p_cm[$i]/=$n_prot_atoms;
+}
+
+my $n=$n_prot_atoms;
+do {
+  $line=<INP>;
+  $n++;
+  my $type=substr $line,5,10;
+  if ($type=~m/SOL     OW/) {
+    my @rw;
+    for my $i (0..2) {
+      my $x=substr $line,20+8*$i,8;
+      $x*=1.0;
+      push @rw,$x;
+    }
+    my $r2_min=10.0;
+    for my $np (0..$n_prot_atoms-1) {
+      my $r2=0;
+      for my $i (0..2) {
+	 $r2+=($r_prot[$np*3+$i]-$rw[$i])**2;
+      }
+      if ($r2_min>$r2) {
+	$r2_min=$r2;
+      }
+      last if ($r2_min<$space2);
+    }
+    if ($r2_min<$space2) {
+       my @shift;
+       my $s2=0;
+       for my $i (0..2) {
+ 	$shift[$i]=$rw[$i]-$p_cm[$i];
+ 	$s2+=$shift[$i]**2;
+       }
+       $s2=sqrt($s2);
+       for my $i (0..2) {
+	$shift[$i] /= $s2;
+       }
+       my $n_shift=0;
+       do {
+        $r2_min=10.0;
+	$n_shift++;
+	for my $i (0..2) {
+	  $rw[$i] += $shift[$i];
+	}
+	for my $np (0..$n_prot_atoms-1) {
+	  my $r2=0;
+	  for my $i (0..2) {
+	    $r2+=($r_prot[$np*3+$i]-$rw[$i])**2;
+	  }
+	  if ($r2_min>$r2) {
+	    $r2_min=$r2;
+	  }
+	}
+	
+       } while ($r2_min<$min_sep2);
+       my $head=substr $line,0,20;
+       print OUT $head;
+       for my $i (0..2) {
+	  printf(OUT "%8.3f",$rw[$i]);
+       }
+       print OUT "\n";
+       for my $k (0..1) {
+	$line=<INP>;
+	$n++;
+	$head=substr $line,0,20;
+	print OUT $head;
+	for my $i (0..2) {
+	   my $x=substr $line,20+8*$i,8;
+	   $x*=1.0;
+	   $x += $n_shift*$shift[$i];
+	   printf(OUT "%8.3f",$x);
+	}
+	print OUT "\n";
+       }
+    } else {
+      print OUT $line;
+    }
+  } else {
+    print OUT $line;
+  }
+} while ($n!=$n_atoms); 
+
+$line=<INP>;
+print OUT $line;
+
+close INP;
+close OUT;
+
+
+close INP;
+close OUT;

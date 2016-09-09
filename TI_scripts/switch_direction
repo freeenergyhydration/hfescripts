@@ -1,0 +1,30 @@
+#!/usr/bin/perl -w
+use strict;
+
+my $n_solute_at=$ARGV[0];
+
+die unless (defined $n_solute_at);
+
+my $n_head=$n_solute_at+2;
+my $n_tail=$n_solute_at+3;
+
+if (-e "initial.bak.gro") {
+  die "initial backup already exists...";
+}
+
+if (-e "final.bak.gro") {
+  die "final backup already exists...";
+}
+
+system "cp initial.gro initial.bak.gro";
+system "cp final.gro final.bak.gro";
+
+
+system "head -n $n_head final.gro >ini_solute.gro";
+system "head -n $n_head initial.gro >fini_solute.gro";
+
+system "tail -n +$n_tail initial.gro>>ini_solute.gro";
+system "tail -n +$n_tail final.gro>>fini_solute.gro";
+
+system "mv ini_solute.gro initial.gro";
+system "mv fini_solute.gro final.gro";

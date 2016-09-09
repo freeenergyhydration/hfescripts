@@ -1,0 +1,94 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+
+my $level=$ARGV[2];
+my $distance_file=$ARGV[1];
+my $traj=$ARGV[0];
+my $delta=0.1;
+my $index=0;
+my $prot="protein_nh.gro";
+
+my $n_written=0;
+
+open(INP,$distance_file) or die "problem\n";
+open(OUT,">my_index.ndx");
+print OUT "[ my_frames ]\n";
+
+while(<INP>) {
+  
+  
+  my $line=$_;
+    if ($line=~m/^\@/){
+    next; 
+    }
+    if ($line=~m/^\&/){
+    next;
+    }
+  $index++;
+  my @data=split(/\s+/,$line);  
+  
+  my $value = $data[-1];
+  if (abs($value-$level) < $delta){ 
+    print OUT "$index ";
+    $n_written++;
+    if ($n_written>10) {
+      $n_written=0;
+      print OUT "\n";
+    }
+    print "$value\n";
+    
+     }  
+}
+
+close INP;
+print OUT "\n";
+close OUT;
+
+system "trjconv -f $traj -sub my_index.ndx -o my_frames.xtc";
+
+system "echo 0 | gmx rmsf -f my_frames.xtc -s $prot -ox xaver_my_frames.pdb";
+system "echo 2 2 | gmx rmsdist -f my_frames.xtc -s xaver_my_frames.pdb -o rmsd_my_frames.xvg";
+
+my $rmsd_my_frames="rmsd_my_frames.xvg";
+my $index_rmsd=0;
+my $min=1000;
+my $min_frame; 
+open(INP,$rmsd_my_frames) or die "problem\n";
+#open(OUT,">my_index_rmsd.ndx");
+#print OUT "[ my_frames ]\n";
+
+
+while(<INP>) {
+
+my $rmsd_my_frames=$_;
+    if ($rmsd_my_frames=~m/^\@/){
+    next; 
+    }
+    if ($rmsd_my_frames=~m/^\#/){
+    next;
+    }  
+    $index_rmsd++;
+    my @data=split(/\s+/,$rmsd_my_frames);
+    my $value_1 = $data[-1];
+    my $frame = $data[-2];
+    
+    if ($value_1 < $min) {
+      $min=$value_1;
+      $min_frame=$frame;
+    
+    }
+}   
+print "$min_frame $min\n";    
+close INP;   
+system "echo 0 | trjconv -f $traj -s $prot -dump $min_frame -o min_frame_$level.gro";
+    
+
+
+#print OUT "\n";
+#close OUT;   
+    
+
+#system "gmx analyze -f rmsd_my_frames.xvg > rmsd_analiza.dat";
+# system "sort -k2 rmsd_my_frames.xvg> rmsd_my_frames_sort.xvg";
+# system "sed -n '3p' rmsd_my_frames_sort.xvg >my_frame.xvg";

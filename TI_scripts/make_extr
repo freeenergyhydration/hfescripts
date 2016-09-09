@@ -1,0 +1,23 @@
+#!/usr/bin/perl -w
+use strict;
+
+my $ini_org=$ARGV[0];
+my $fin_org=$ARGV[1];
+
+die unless (-e $ini_org);
+die unless (-e $fin_org);
+
+system "grompp_d -f mini.mdp -c $ini_org -p topology.top -o tmp.tpr";
+my $ini_bak=$ini_org;
+$ini_bak=~s/.gro/.bak.gro/;
+
+system "cp $ini_org $ini_bak";
+
+system "echo 2 0 | trjconv -f $ini_bak -s tmp.tpr -pbc mol -ur compact -center -o initial.gro";
+
+my $fin_bak=$fin_org;
+$fin_bak=~s/.gro/.bak.gro/;
+system "cp $fin_org $fin_bak";
+system "echo 2 0 | trjconv -f $fin_bak -s tmp.tpr -pbc mol -ur compact -center -o fin.tmp.gro";
+system "echo 1 0 | trjconv -f fin.tmp.gro -s initial.gro -fit rot+trans -o final.gro";
+system "rm fin.tmp.gro";

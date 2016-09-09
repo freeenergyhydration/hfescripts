@@ -1,0 +1,125 @@
+#!/usr/bin/perl -w
+use strict;
+
+my $n_steps=16;
+my $n_prot_atoms=1231;
+my $d_lambda=0.002;
+
+my $solvent_group="Water";
+my $solute_group="Protein";
+
+my $equ_soft_time=10; #ps
+my $equ_soft_core=0.1; #initial soft core lambda
+
+######### pmf_skeletor_soft ###########################
+die unless(-e "pmf_skeletor_soft");
+system "mv pmf_skeletor_soft tmp_file";
+open(INP,"tmp_file") or die;
+open(OUT,">pmf_skeletor_soft");
+while(<INP>) {
+  if (/^my \$n_steps/) {
+    print OUT "my \$n_steps = $n_steps;\n";
+    next;
+  }
+  if (/^my \$n_prot_atoms/) {
+    print OUT "my \$n_prot_atoms = $n_prot_atoms;\n";
+    next;
+  }
+  if (/^my \$equ_soft_time/) {
+    print OUT "my \$equ_soft_time = $equ_soft_time;\n";
+    next;
+  }
+  if (/^my \$solvent_group/) {
+    print OUT "my \$solvent_group = \"$solvent_group\";\n";
+    next;
+  }
+  if (/^my \$solute_group/) {
+    print OUT "my \$solute_group = \"$solute_group\";\n";
+    next;
+  } 
+  if (/^my \$equ_soft_core/) {
+    print OUT "my \$equ_soft_core = \"$equ_soft_core\";\n";
+    next;
+  } 
+  print OUT $_;
+  
+}
+close INP;
+close OUT;
+system "chmod +x pmf_skeletor_soft";
+system "rm tmp_file";
+
+######### pmf_re_runner ###########################
+die unless(-e "pmf_re_runner");
+system "mv pmf_re_runner tmp_file";
+open(INP,"tmp_file") or die;
+open(OUT,">pmf_re_runner");
+while(<INP>) {
+  if (/^my \$n_steps/) {
+    print OUT "my \$n_steps = $n_steps;\n";
+    next;
+  }
+  print OUT $_;
+  
+}
+close INP;
+close OUT;
+system "chmod +x pmf_re_runner";
+system "rm tmp_file";
+
+######### make_ti_ew ###########################
+die unless(-e "make_ti_ew");
+system "mv make_ti_ew tmp_file";
+open(INP,"tmp_file") or die;
+open(OUT,">make_ti_ew");
+while(<INP>) {
+  if (/^my \$n_steps/) {
+    print OUT "my \$n_steps = $n_steps;\n";
+    next;
+  }
+  if (/^my \$n_prot_atoms/) {
+    print OUT "my \$n_prot_atoms = $n_prot_atoms;\n";
+    next;
+  }
+  if (/^my \$d_lambda/) {
+    print OUT "my \$d_lambda = $d_lambda;\n";
+    next;
+  }
+
+  print OUT $_;
+  
+}
+close INP;
+close OUT;
+system "chmod +x make_ti_ew";
+system "rm tmp_file";
+
+######### make_ti_boots ###########################
+die unless(-e "make_ti_boots");
+system "mv make_ti_boots tmp_file";
+open(INP,"tmp_file") or die;
+open(OUT,">make_ti_boots");
+while(<INP>) {
+  if (/^my \$n_steps/) {
+    print OUT "my \$n_steps = $n_steps;\n";
+    next;
+  }
+
+  if (/^my \$d_lambda/) {
+    print OUT "my \$d_lambda = $d_lambda;\n";
+    next;
+  }
+
+  print OUT $_;
+  
+}
+close INP;
+close OUT;
+system "chmod +x make_ti_boots";
+system "rm tmp_file";
+
+###########################################################
+system "./pmf_skeletor_soft";
+system "./pmf_re_runner";
+system "./make_ti_ew";
+system "./make_ti_boots > ti_results.dat";

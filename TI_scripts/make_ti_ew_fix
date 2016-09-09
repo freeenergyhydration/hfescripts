@@ -1,0 +1,46 @@
+#!/usr/bin/perl -w
+use strict;
+
+#script to make ti energies
+
+my $n_steps = 32;
+
+my $d_lambda = 0.002;
+
+my $n_prot_atoms = 247;
+
+
+
+###########################################################################
+###########################################################################
+
+my $d_max=1.0;
+my $d_min=0;
+
+my $lambda_step=1.0/$n_steps;
+
+my @lambda;
+for my $i (0..$n_steps) {
+  my $f=$i*$lambda_step;
+  $lambda[$i]=$i*$lambda_step;
+}
+
+for (my $n=0; $n<=$#lambda; $n++) {
+
+  unless (-d "run_$lambda[$n]") {
+    die "no run directory: run_$lambda[$n]\n";
+  }
+  if (-e "run_$lambda[$n]/e_scan_ew.tpr") {
+#    system "rm run_$lambda[$n]/e_scan_ew.tpr";
+    next;
+  }
+  chdir "run_$lambda[$n]";
+  print "ti $n $lambda[$n] started\n";
+  system "cp ../input/make_ti_step_ew_d .";
+  
+  system "cp ../run_0/prod.gro initial.gro";
+  system "cp ../run_1/prod.gro final.gro";
+  
+  system "./make_ti_step_ew_d $lambda[$n] $d_lambda $n_prot_atoms";
+  chdir "..";
+}

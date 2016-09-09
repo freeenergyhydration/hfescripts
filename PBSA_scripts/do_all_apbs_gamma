@@ -1,0 +1,55 @@
+#!/usr/bin/perl -w
+
+my $input_file="free_energy_explicit_crambin.dat";
+
+my $output_file = "feps_levels_all_gamma_fabp.dat";
+
+my $min=-2;
+my $max=2;
+my $delta=0.5;
+my $cmd;
+
+my $emin=1;
+my $emax=20;
+my $edelta=0.5;
+
+my $gmin=1;
+my $gmax=1;
+my $gdelta=1;
+
+my @explicit;
+
+open (INP,$input_file) or die;
+while(my $line = <INP>){
+  chomp $line;
+  my @fields = split "\\t", $line;
+  push @explicit, $fields[1];
+}
+close(INP);
+system "echo -n fep_level > $output_file";
+
+for (my $pdie=$gmin; $pdie<=$gmax; $pdie+=$gdelta) {
+  system "echo -n ,$pdie >> $output_file" 
+
+}
+
+system "echo ,explicit >> $output_file";
+
+for (my $lambda=$min; $lambda<=$max; $lambda+=$delta) {    
+  $cmd = "cd fep_level_$lambda" . " \n ";
+  $cmd = $cmd . "echo -n \\nfep_level_$lambda, >> ../$output_file" . " \n ";
+  
+  for (my $gamma=$gmin; $gamma<=$gmax; $gamma+=$gdelta){
+    $cmd = $cmd . "echo -n [ >> ../$output_file" . " \n ";
+    $cmd = $cmd . "../pre_PBgamma $emin $emax $edelta $gamma  > ./feps_levels_apbs_$lambda-$gamma.dat" . " \n ";
+    $cmd = $cmd . "tr '\\n' ',' < ./feps_levels_apbs_$lambda-$gamma.dat >> ../$output_file". " \n ";
+    $cmd = $cmd . "echo -n ], >> ../$output_file" . " \n ";
+  }
+  
+  my $expval = pop @explicit;
+  $cmd = $cmd . "echo [" . $expval . "] >> ../$output_file" . " \n ";
+  $cmd = $cmd . "cd ..\n";
+  system "$cmd";
+}
+
+#system "python calc_rmse_gamma.py";

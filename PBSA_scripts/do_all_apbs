@@ -1,0 +1,52 @@
+#!/usr/bin/perl -w
+
+my $input_file="free_energy_explicit_villin.dat";
+
+my $output_file = "../feps_levels_all.dat";
+
+my $min=-4;
+my $max=4;
+my $delta=0.5;
+my $cmd;
+
+my $emin=0.4;
+my $emax=10.2;
+my $edelta=0.2;
+
+my @explicit;
+
+open (INP,$input_file) or die;
+while(my $line = <INP>){
+  chomp $line;
+  my @fields = split "\\t", $line;
+  push @explicit, $fields[1];
+}
+close(INP);
+system 'echo fep_level > feps_levels_all.dat';
+
+for (my $pdie=$emin; $pdie<=$emax; $pdie+=$edelta) {
+  system "echo -n ,$pdie >> feps_levels_all.dat" 
+
+}
+
+system 'echo explicit >> feps_levels_all.dat';
+
+for (my $lambda=$min; $lambda<=$max; $lambda+=$delta) {
+  $cmd = "cd fep_level_$lambda";
+  $cmd = $cmd . " \n ";
+  $cmd = $cmd . "../pre_PB $emin $emax $edelta > ./feps_levels_apbs_$lambda.dat";
+  $cmd = $cmd . " \n ";
+  $cmd = $cmd . "echo -n fep_level_$lambda, >> $output_file";
+  $cmd = $cmd . " \n ";
+  $cmd = $cmd . "tr '\\n' ',' < ./feps_levels_apbs_$lambda.dat >> $output_file";
+  $cmd = $cmd . " \n ";
+  my $expval = pop @explicit;
+  $cmd = $cmd . "echo -n " . $expval . " >> $output_file";
+  $cmd = $cmd . " \n ";
+  $cmd = $cmd . "cd ..\n";
+ print $cmd . "\n";
+ system "$cmd";
+
+}
+
+system "./calc_rmse $output_file";

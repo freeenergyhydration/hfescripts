@@ -1,0 +1,177 @@
+#!/usr/bin/perl -w
+use strict;
+#script to equilibrate for pmf calculations
+
+my $n_prot_atoms = 1231;
+
+my $n_steps = 64;
+
+my $solvent_group = "Water";
+my $solute_group = "Protein";
+
+
+###########################################################################3
+sub run_report {
+  my $name=$_[0];
+  printf("%-7s",$name);
+  
+  open(INP,"$name.rep") or die "no $name report file..\n";
+  while(<INP>) {
+     my $line=$_;
+    if ($line=~m/Performance/) {
+      chomp $line;
+      print "$line";
+    }
+  }
+  close INP;
+  
+  open(INP,"$name.prep") or die "no $name preparation file...\n";
+  while(<INP>) {
+    my $line=$_;
+    if ($line=~m/notes/) {
+      chomp $line;
+      print "| $line ";
+    }
+  }
+  close INP;
+  print "\n";
+}
+############################################################################
+sub make_system {
+	my $solute_name=$_[0];
+	my $solvent_name=$_[1];
+	my $n_solute_atoms=$_[2];
+        
+        open(SYST,">system.gro");
+	open(INP,$solute_name) or die;
+	for my $i (0..$n_solute_atoms+1) {
+		my $line=<INP>;
+		print SYST $line;
+	}
+	close INP;
+	open(INP,$solvent_name) or die;
+	for my $i (0..$n_solute_atoms+1) {
+		<INP>;
+	}
+	while(<INP>) {
+		print SYST $_;
+	}
+	close INP;
+	close SYST;
+
+}
+
+############################################################################
+sub set_thermostat {
+  my $file=$_[0];
+  unless (-e $file) {
+    die "no $file\n";
+  }
+  system "mv $file $file.tmp";
+  open(INP,"$file.tmp") or die;
+  open(OUT,">$file");
+  while(<INP>) {
+    if (/^tc-grps/) {
+      print OUT "tc-grps         = $solvent_group $solute_group\n";
+      next;
+    }
+    print OUT $_;
+  }
+  close INP;
+  close OUT;
+}
+###########################################################################
+###########################################################################
+my $input_dir="input";
+my $d_lambda=1.0/$n_steps;
+
+my @lambda;
+
+print "$n_prot_atoms selected as solute atoms\n";
+print "Calculation will require ",$n_steps+1," steps\n";
+
+# prepare initial and final gro
+#chdir $input_dir;
+#system "cp initial.gro initial_org.gro";
+#system "cp final.gro final_org.gro";
+#system "grompp -f mini.mdp -c initial_org.gro -p topology.top -o mini.tpr";
+#system "echo 0 | trjconv -f initial_org.gro -s mini.tpr -pbc mol -ur compact -o initial.gro";
+#system "echo 0 | trjconv -f final_org.gro -s mini.tpr -fit rot+trans -o final.gro";
+#system chdir "..";
+
+
+for my $i (0..$n_steps) {
+  my $f=$i*$d_lambda;
+  $lambda[$i]=$i*$d_lambda;
+}
+
+my $lambda_ini=0;
+for (my $n=0; $n<=$#lambda; $n++) {
+
+  if (-e "equ_$lambda[$n]/system.gro") {
+    next;
+  }
+  
+  system "mkdir equ_$lambda[$n]";
+  chdir "equ_$lambda[$n]";
+  
+  print "\nlambda $n $lambda[$n] started -------------\n";
+
+  system "cp -r ../input/* .";
+
+if ($n==$lambda_ini) {
+    system "cp initial.gro system.gro";
+ } else {
+     system "cp ../equ_$lambda[$n-1]/equ.gro ./previous.gro";
+        #make restraints
+     system "./restraint_interpolator initial.gro final.gro $lambda[$n]";
+    &make_system("restr.gro","previous.gro",$n_prot_atoms);
+ }
+ 
+
+  
+  #set set_thermostat groups for all mdp files
+  my @mdp_files=("nvt","equ","prod");
+  foreach my $file (@mdp_files) {
+    &set_thermostat("$file.mdp");
+  }
+    #spacing
+    system "grompp -f mini.mdp -c system.gro -p topology.top -o mini_tmp";
+    if (-e "tmp.gro") {
+      system "rm tmp.gro";
+    }
+    system "echo 0 | trjconv -f system.gro -s mini_tmp.tpr -pbc mol -ur compact -o tmp.gro";
+
+
+    die unless (-e "tmp.gro");
+    system "mv tmp.gro system.gro";
+    
+    system "./spacer $n_prot_atoms";
+
+    #flexible water minimization
+
+    system "grompp_d -f mini_soft.mdp -c space.gro -p topology.top -o mini_soft >mini_soft.prep 2>&1"
+;
+    system "mdrun_d -deffnm mini_soft >mini_soft.rep 2>&1";
+
+    system "grompp_d -f mini_flex.mdp -c mini_soft.gro -p topology.top -o mini_flex >mini_flex.prep 2>&1";
+    system "mdrun_d -deffnm mini_flex >mini_flex.rep 2>&1";
+
+    system "grompp_d -f mini.mdp -c mini_flex.gro -p topology.top -o mini >mini.prep 2>&1";
+    system "mdrun_d -deffnm mini >mini.rep 2>&1";
+   
+
+ 
+    #nvt run
+    system "grompp -f nvt.mdp -c mini.gro -p topology.top -o nvt.tpr -maxwarn 1 >nvt.prep 2>&1";
+    system "mdrun -deffnm nvt >nvt.rep 2>&1";
+    &run_report("nvt");
+#equilibration
+  system "grompp -f equ.mdp -c nvt.gro -p topology.top -t nvt.cpt -o equ.tpr -maxwarn 1 >equ.prep 2>&1";
+  system "mdrun -deffnm equ >equ.rep 2>&1";
+  &run_report("equ"); 
+    
+  chdir "..";
+}
+exit;
+

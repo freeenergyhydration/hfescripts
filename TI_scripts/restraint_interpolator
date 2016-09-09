@@ -1,0 +1,48 @@
+#!/usr/bin/perl -w
+use strict;
+my $a_file=$ARGV[0];
+my $b_file=$ARGV[1];
+my $lam=$ARGV[2];
+
+open(INA,$a_file) or die "$a_file problem...\n";
+open(INB,$b_file) or die "$b_file problem...\n";
+open(OUT,">restr.gro");
+print OUT "interpolated restraints $a_file $b_file at lambda $lam\n";
+my $linea=<INA>;
+my $lineb=<INB>;
+$linea=<INA>;
+$lineb=<INB>;
+chomp $linea;
+chomp $lineb;
+if (int($linea) != int($lineb)) {
+  die "atom numbers do not match: $linea $lineb\n";
+}
+print OUT "$linea\n";
+my $n_atoms=int($linea);
+for my $n (1..$n_atoms) {
+  my $linea=<INA>;
+  my $lineb=<INB>;
+#   my @data_a=split(/\s+/,$linea);
+#   my @data_b=split(/\s+/,$lineb);
+  my $heada=substr $linea,0,20;
+  my $headb=substr $linea,0,20; 
+  if ($heada ne $headb) {
+    die "structures differ: $heada $headb\n";
+  }
+  print OUT $heada;
+  my $taila=substr $linea,20,99;
+  my $tailb=substr $lineb,20,99;
+  my @data_a=split(/\s+/,$taila);
+  my @data_b=split(/\s+/,$tailb);
+  for my $i (0..2) {
+    my $xa=$data_a[1+$i];
+    my $xb=$data_b[1+$i];
+    printf(OUT "%8.3f",$xa+$lam*($xb-$xa));
+  }
+  print OUT "\n";
+}
+$linea=<INA>;
+print OUT $linea;
+close OUT;
+close INA;
+close INB;

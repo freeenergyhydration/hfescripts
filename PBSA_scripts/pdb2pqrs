@@ -1,0 +1,79 @@
+#!/usr/bin/perl -w
+use strict;
+
+my $pdb=$ARGV[0];
+my $top=$ARGV[1];
+
+my %radius;
+my %epsilon;
+my @charge;
+my @type;
+my @coor;
+my @name;
+
+my $n_atoms=0;
+
+my $atom_types="/opt/gromacs/gromacs-5.0.2/share/top/amber99sb.ff/ffnonbonded.itp";
+open(INP,$atom_types) or die;
+while(<INP>) {
+  if ((/^;/) or (/^\[/)) {next;}
+  my @data=split;
+#   print "$data[0] $data[5] $data[6]\n";
+  $radius{$data[0]}=$data[5]*5.61231;
+  $epsilon{$data[0]}=$data[6]/4.184; 
+}
+close INP;
+
+open(INP,$pdb) or die;
+while(<INP>) {
+  unless(/^ATOM/) {next;}
+  my $line=$_;
+  my $coords=substr $line,0,54;
+  my $at_name=substr $line,12,5;
+  $at_name=~s/\s+//;
+  $at_name=~s/\s+//;
+  push @coor,$coords;
+  push @name,$at_name;
+  $n_atoms++;
+}
+close INP;
+
+open(INP,$top) or die;
+while(<INP>) {
+  last if (/\[ atoms \]/);
+}
+
+my $n_at=0;
+my $tot_charge=0;
+while($n_at<$n_atoms) {
+  my $line=<INP>;
+  if ($line=~m/^;/) {next;}
+#   print $line;
+  my @data=split(/\s+/,$line);
+  my $at_number=int($data[1]);
+  my $at_type=$data[2];
+  my $at_name=$data[5];
+  my $at_charge=$data[7];
+  $at_number--;
+  printf("%s%8.4f%8.4f%8.4f\n",$coor[$at_number],$at_charge,$radius{$at_type},$epsilon{$at_type});
+  $tot_charge+=$at_charge;
+  $n_at++;
+#   print "$at_type|$at_name|$at_charge|\n";
+#   if (($name[$at_number]) eq ($at_name)) {
+#     printf("%s%8.4f%8.4f%8.4f\n",$coor[$at_number],$at_charge,$radius{$at_type},$epsilon{$at_type});
+#     $n_at++;
+#   } else {
+#     my $at_element=substr $at_name,0,1;
+#     my $element=substr $name[$at_number],0,1;
+#     if ($element eq $at_element) {
+#         printf("%s%8.4f%8.4f%8.4f\n",$coor[$at_number],$at_charge,$radius{$at_type}, $epsilon{$at_type});
+# 	$n_at++;
+#     }
+#     else {
+#       printf("%s%8.4f%8.4f%8.4f\n",$coor[$at_number],$at_charge,$radius{$at_type},$epsilon{$at_type});
+#       $n_at++;
+#     }
+#   }
+}
+close INP;
+print "REMARK TOTAL CHARGE = $tot_charge\n";

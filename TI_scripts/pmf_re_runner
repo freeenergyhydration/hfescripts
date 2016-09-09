@@ -1,0 +1,76 @@
+#!/usr/bin/perl -w
+use strict;
+#script to run pmf calculations
+
+my $n_steps=16.0;
+
+
+
+
+###########################################################################3
+sub run_report {
+  my $name=$_[0];
+  printf("%-7s",$name);
+  
+  open(INP,"$name.rep") or die "no $name report file..\n";
+  while(<INP>) {
+     my $line=$_;
+    if ($line=~m/Performance/) {
+      chomp $line;
+      print "$line";
+    }
+  }
+  close INP;
+  
+  open(INP,"$name.prep") or die "no $name preparation file...\n";
+  while(<INP>) {
+    my $line=$_;
+    if ($line=~m/notes/) {
+      chomp $line;
+      print "| $line ";
+    }
+  }
+  close INP;
+  print "\n";
+}
+
+###########################################################################
+###########################################################################
+
+print "Calculation will require ",$n_steps+1," steps\n";
+
+my $d_lambda=1.0/$n_steps;
+my @lambda;
+for my $i (0..$n_steps) {
+  my $f=$i*$d_lambda;
+  $lambda[$i]=$i*$d_lambda;
+}
+
+for (my $n=0; $n<=$#lambda; $n++) {
+  if (-d "run_$lambda[$n]") {
+    next;
+  }
+
+  unless (-d "equ_$lambda[$n]") {
+    die "no $n equ_$lambda[$n] dir\n";
+  }
+
+  system "mkdir run_$lambda[$n]";
+  chdir "run_$lambda[$n]";
+  
+  print "\nlambda $n $lambda[$n] started -------------\n";
+
+  system "cp -r ../input/* .";
+  system "cp ../equ_$lambda[$n]/equ.gro .";
+  system "cp ../equ_$lambda[$n]/equ.cpt .";
+  system "cp ../equ_$lambda[$n]/prod.mdp .";
+  
+  #free energy run
+  system "grompp -f prod.mdp -c equ.gro -p topology.top -t equ.cpt -o prod.tpr -maxwarn 1 >prod.prep 2>&1";
+  system "mdrun -deffnm prod >prod.rep 2>&1";
+  &run_report("prod");
+  
+  chdir "..";
+}
+exit;
+

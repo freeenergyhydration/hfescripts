@@ -1,0 +1,177 @@
+#!/usr/bin/perl -w
+use strict;
+my $apbs="/home/piosto/programs/APBS-1.4-linux-static-x86_64/bin/apbs";
+
+my $molecule=$ARGV[0];
+my $prot_epsilon=2.0;
+if (defined($ARGV[1])) {
+  $prot_epsilon=$ARGV[1];
+}
+
+my $gamma=0.02;
+
+my $dfg=8.0; #fglen margin on each side
+my $dcg=10.0; #cglen over fglen on each side
+my $res=0.2;
+
+
+sub find_dime {
+  my $length=$_[0];
+  my $n=int(($length/$res-1)/32)+1;
+  return $n*32+1;
+}
+
+########analyze protein##########
+my $x_min=9999;
+my $x_max=-9999;
+my $y_min=9999;
+my $y_max=-9999;
+my $z_min=9999;
+my $z_max=-9999;
+open(INP,$molecule) or die "no $molecule";
+while(<INP>) {
+  my $line=$_;
+  if (/^ATOM/) {
+    my @r;
+    for my $i (0..2) {
+      $r[$i]=substr $line,30+8*$i,8;
+    }
+    if ($r[0]<$x_min) {$x_min=$r[0]};
+    if ($r[0]>$x_max) {$x_max=$r[0]};  
+    if ($r[1]<$y_min) {$y_min=$r[1]};
+    if ($r[1]>$y_max) {$y_max=$r[1]};  
+    if ($r[2]<$z_min) {$z_min=$r[2]};
+    if ($r[2]>$z_max) {$z_max=$r[2]};  
+  
+  }
+}
+close INP;
+my $dx=$x_max-$x_min;
+my $dy=$y_max-$y_min;
+my $dz=$z_max-$z_min;
+# print "DX DY DZ: $dx $dy $dz\n";
+my $dime_x=&find_dime($dx+2*$dfg);
+my $dime_y=&find_dime($dy+2*$dfg);
+my $dime_z=&find_dime($dz+2*$dfg);
+# print "nx ny nz: $dime_x $dime_y $dime_z\n";
+# exit;
+
+
+my $cglen_x=$dx+2*($dfg+$dcg);
+my $cglen_y=$dy+2*($dfg+$dcg);
+my $cglen_z=$dz+2*($dfg+$dcg);
+my $fglen_x=$dx+2*$dfg;
+my $fglen_y=$dy+2*$dfg;
+my $fglen_z=$dz+2*$dfg;
+
+my $input="apbs_tmp.inp";
+open(OUT,">$input");
+print OUT "    read\n";
+print OUT "         mol pqr $molecule \n";
+print OUT "#         parm flat  vparam-amber-parm94.dat \n";
+print OUT "    end\n";
+print OUT "    elec name protein\n";
+print OUT "         mg-auto\n";
+print OUT "         mol 1\n";
+print OUT "         dime $dime_x $dime_y $dime_z \n";
+print OUT "         cglen $cglen_x $cglen_y $cglen_z\n";
+print OUT "         fglen $fglen_x $fglen_y $fglen_z\n";
+print OUT "         cgcent mol 1\n";
+print OUT "         fgcent mol 1\n";
+print OUT "         # NaCl ionic strength in mol/l\n";
+print OUT "         #ion  1 0.15 0.95 # sodium ions\n";
+print OUT "         #ion -1 0.15 1.81 # chloride ions\n";
+print OUT "\n";
+print OUT "         lpbe\n";
+print OUT "         bcfl mdh\n";
+print OUT "         pdie  $prot_epsilon # protein and faux-lipid\n";
+print OUT "         sdie 71.0 # Eisenberg and Crothers Phys. Chem. book 1979\n";
+print OUT "         srfm smol\n";
+print OUT "         chgm spl2\n";
+print OUT "         srad 1.4\n";
+print OUT "         swin 0.3\n";
+print OUT "         sdens 10.0\n";
+print OUT "         temp 300\n";
+print OUT "        # gamma 0.105 # Uncomment for old versions of APBS -- deprecated for APBS 1.0.0\n";
+print OUT "         calcenergy total\n";
+print OUT "         calcforce no\n";
+print OUT "    end\n";
+print OUT "        elec name protein_ref\n";
+print OUT "         mg-auto\n";
+print OUT "         mol 1\n";
+print OUT "         dime $dime_x $dime_y $dime_z \n";
+print OUT "         cglen $cglen_x $cglen_y $cglen_z\n";
+print OUT "         fglen $fglen_x $fglen_y $fglen_z\n";
+print OUT "         cgcent mol 1\n";
+print OUT "         fgcent mol 1\n";
+print OUT "         # NaCl ionic strength in mol/l\n";
+print OUT "         #ion  1 0.15 0.95 # sodium ions\n";
+print OUT "         #ion -1 0.15 1.81 # chloride ions\n";
+print OUT "\n";
+print OUT "         lpbe\n";
+print OUT "         bcfl mdh\n";
+print OUT "         pdie $prot_epsilon # protein and faux-lipid\n";
+print OUT "         sdie 1.0\n";
+print OUT "         srfm smol\n";
+print OUT "         chgm spl2\n";
+print OUT "         srad 1.4\n";
+print OUT "         swin 0.3\n";
+print OUT "         sdens 10.0\n";
+print OUT "         temp 300\n";
+print OUT "         #gamma 0.105 # Uncomment for old versions of APBS -- deprecated for APBS 1.0.0\n";
+print OUT "         calcenergy total\n";
+print OUT "         calcforce no\n";
+print OUT "    end\n";
+print OUT "    APOLAR name protein\n";
+print OUT "        grid 0.3 0.3 0.3\n";
+print OUT "        mol 1\n";
+print OUT "        srfm sacc\n";
+print OUT "        swin 0.3\n";
+print OUT "        srad 0.65\n";
+print OUT "#        press 0.2394\n";
+print OUT "        press 0\n";
+print OUT "#        gamma 0.0085\n";
+print OUT "#        gamma 0.02265\n";
+print OUT "	gamma 1.0\n";
+print OUT "#        bconc 0.033428\n";
+print OUT "        bconc 0\n";
+print OUT "        sdens 100.0\n";
+print OUT "        dpos 0.2\n";
+print OUT "        temp 298.15\n";
+print OUT "        calcenergy total\n";
+print OUT "        calcforce no\n";
+print OUT "    END\n";
+print OUT "\n";
+print OUT "    \n";
+print OUT "    print elecEnergy  protein - protein_ref end\n";
+print OUT "     print  apolEnergy protein end\n";
+print OUT "     #print energy protein end\n";
+print OUT "    quit\n";
+close OUT;
+
+if (-e "apbs.out") {
+  system "rm apbs.out";
+}
+
+system "$apbs apbs_tmp.inp >apbs.out";
+
+open(INP,"apbs.out") or die "apbs exec problem\n";
+my $elec_energy=0;
+my $apo_energy=0;
+while(<INP>) {
+  my $line=$_;
+  if ($line=~m/^  Global net ELEC energy/) {
+    my @data=split(/\s+/,$line);
+    $elec_energy=$data[6];
+  }
+  if ($line=~m/^  Global net APOL energy/) {
+    my @data=split(/\s+/,$line);
+    $apo_energy=$data[6];
+  }
+}
+close INP;
+
+my $tot_energy=$elec_energy+$gamma*$apo_energy;
+$tot_energy /= 4.184;
+$elec_energy /= 4.184;
+print "$tot_energy $elec_energy $apo_energy\n";

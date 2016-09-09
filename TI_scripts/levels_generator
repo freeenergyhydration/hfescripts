@@ -1,0 +1,31 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+my $min_level=-5;
+my $max_level=5;
+my $delta=0.5;
+
+unless (-e "selector") {
+  die "No selector script\n";
+}	
+
+if (-e "min_frames.gro") {
+  system "rm min_frames.gro";
+
+}
+for (my $level=$min_level; $level<=$max_level; $level = $level + $delta) {
+
+if (-e "min_frame_$level.gro") {
+  system "rm min_frame_$level.gro ";
+
+} 
+
+system "./selector prod_protein_pca.xtc proj.xvg $level";
+
+unless (-e "min_frame_$level.gro") {
+  die "No frame for $level\n";
+}
+
+system "cat min_frame_$level.gro >> min_frames.gro";
+}

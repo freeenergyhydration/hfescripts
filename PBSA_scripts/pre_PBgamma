@@ -1,0 +1,7 @@
+#!/usr/bin/perl -w
+
+
+#system "echo \"$ARGV[0] $ARGV[1] $ARGV[2] $ARGV[3]\" > ../status.txt"
+#system "echo 1 | trjconv -f final.gro -s final.gro -o final.pdb > silent.txt";
+#system "./pdb2pqrs final.pdb topology.top >final.pqr";
+system "./do_apbs_auto final.pqr $ARGV[0] $ARGV[1] $ARGV[2] $ARGV[3]";

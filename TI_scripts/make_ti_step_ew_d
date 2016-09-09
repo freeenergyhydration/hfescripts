@@ -1,0 +1,254 @@
+#!/usr/bin/perl -w
+#use Statistics::Descriptive;
+
+#my $stat= Statistics::Descriptive::Full->new();
+
+
+
+my $lambda=$ARGV[0];
+my $d_lambda=$ARGV[1];
+my $n_prot_atoms=$ARGV[2];
+
+die unless(defined($lambda));
+die unless(defined($d_lambda));
+die unless(defined($n_prot_atoms));
+
+my $job="prod";
+
+
+####################################################################
+sub mod_traj {
+  my $traj_name=$_[0];
+  my $sol_name=$_[1];
+  
+open(INP,$sol_name) or die;
+my $line=<INP>;
+my $n_sol_atoms=int(<INP>);
+my @sol_head;
+my @sol_line;
+for my $i (1..$n_sol_atoms) {
+  $line=<INP>;
+  my $head=substr $line,0,21;
+#   my $tail=substr $line,21,99;
+  push (@sol_head,$head);
+  push (@sol_line,$line);
+}
+close INP;
+# print "Read solute wiht $n_sol_atoms atoms\n";
+
+open(TRJ,$traj_name) or die;
+
+my $mod_traj_name=$traj_name;
+$mod_traj_name=~s/.gro/_mod.gro/;
+open(OUT,">$mod_traj_name");
+
+$line=<TRJ>;
+my $n_sys_atoms=int(<TRJ>);
+seek TRJ, 0, 0;
+
+while(<TRJ>) {
+  print OUT $_;
+  $line=<TRJ>;
+  print OUT $line;
+  for my $i (1..$n_sol_atoms) {
+    $line=<TRJ>;
+    if ($line!~m/^$sol_head[$i-1]/) {
+      die "Solute atom mismatch...\n";
+    }
+    print OUT $sol_line[$i-1];
+  }
+  for my $i ($n_sol_atoms..$n_sys_atoms-1) {
+    $line=<TRJ>;
+    print OUT $line;
+  }
+  $line=<TRJ>;
+  print OUT $line;
+}
+close TRJ;
+close OUT;
+}
+###############################################################
+sub make_solute {
+	my $a_file=$_[0];
+	my $b_file=$_[1];
+	my $lam=$_[2];
+	my $n_sol_atoms=$_[3];
+
+	open(INA,$a_file) or die "$a_file problem...\n";
+	open(INB,$b_file) or die "$b_file problem...\n";
+	open(OUT,">solute_int.gro");
+	print OUT "interpolated solute $a_file $b_file at lambda $lam\n";
+	my $linea=<INA>;
+	my $lineb=<INB>;
+	$linea=int(<INA>);
+	$lineb=int(<INB>);
+	if ($linea != $lineb) {
+	  die "atom numbers do not match: $linea $lineb\n";
+	}
+	print OUT " $n_sol_atoms\n";
+	for my $n (1..$n_sol_atoms) {
+	  my $linea=<INA>;
+	  my $lineb=<INB>;
+	  my @data_a=split(/\s+/,$linea);
+	  my @data_b=split(/\s+/,$lineb);
+	  my $heada=substr $linea,0,20;
+	  my $headb=substr $linea,0,20;
+	  if ($heada ne $headb) {
+	    die "structures differ: $heada $headb\n";
+	  }
+	  print OUT $heada;
+	  for my $i (0..2) {
+	    my $xa=$data_a[4+$i];
+	    my $xb=$data_b[4+$i];
+	    printf(OUT "%11.6f",$xa+$lam*($xb-$xa));
+	  }
+	  print OUT "\n";
+	}
+	close OUT;
+	close INA;
+	close INB;
+}
+
+##########################################################################3
+sub shift_sol {
+  my $sol_name=$_[0];
+  my $dx=$_[1];
+  open(INP,$sol_name) or die;
+  open(OUT,">sol_shifted.gro");
+  my $line=<INP>;
+  print OUT $line;
+  $line=<INP>;
+  print OUT $line;
+  my $n_sol_atoms=int($line);
+  my @sol_head;
+  my @sol_line;
+  for my $i (1..$n_sol_atoms) {
+    $dx*=-1;
+    $line=<INP>;
+    my $head=substr $line,0,20;
+    my $tail=substr $line,21,99;
+    my @coor=split(/\s+/,$tail);
+    print OUT $head;
+    printf(OUT "%8.3f%8.3f%8.3f\n",$coor[1]+$dx,$coor[2],$coor[3]);
+  }
+#   $line=<INP>;
+#   print OUT $line;
+  close INP;
+  close OUT;
+}
+####################################################################
+sub read_ener {
+  my $name=$_[0];
+  open(INP,$name) or die;
+  my $line;
+  my @ener;
+#  system "cp $name en_test_org.dat";
+#  open(OUT,">en_test.dat");
+  do {
+    $line=<INP>;
+   } while (($line=~m/^#/) || ($line=~m/^\@/));
+#    print $line;
+  while(<INP>) {
+    my ($t,@e_data)=split;
+    my $e=0.0;
+    foreach my $de (@e_data) {
+	$e+=$de;	
+    }
+ #   print OUT "$t $e\n";
+    push(@ener,$e);
+  }
+  close INP;
+  #close OUT;
+  return @ener;
+}
+
+####################################################################
+####################################################################
+
+system "grompp_d -f e_scan_ew.mdp -c $job.gro -p topology.top -o e_scan_ew.tpr -maxwarn 1 >escrf.log 2>&1";
+
+system "echo 0 | trjconv_d -s $job.tpr -f $job.trr -o traj.gro  -novel -ndec 6 -skip 2 >trjconv_d.log 2>&1";
+
+&make_solute("initial.gro","final.gro",$lambda+$d_lambda,$n_prot_atoms);
+
+if (-e "traj_mod.gro") {
+	system "rm traj_mod.gro";
+}
+
+&mod_traj("traj.gro","solute_int.gro");
+
+system "mdrun_d -s e_scan_ew.tpr -rerun traj_mod.gro >mdrun_d.log 2>&1";
+
+system "echo 7 8 9 10 | g_energy_d -f ener.edr >g_ener.log 2>&1";
+system "mv energy.xvg energy_pw_p.xvg";
+my @epw_p=&read_ener("energy_pw_p.xvg");
+
+
+if (-e "prot.gro") {
+  system "rm prot.gro";
+}
+
+system "echo 1 | trjconv_d -s $job.tpr -f traj_mod.gro -o prot.gro -dump 0 >trjconv_d.log 2>&1";
+
+system "grompp_d -f e_scan_ew.mdp -c prot.gro -p topology_prot.top -o e_scan_ew_prot.tpr -maxwarn 1 >escrf.log 2>&1";
+
+system "mdrun_d -s e_scan_ew_prot.tpr -rerun prot.gro >mdrun_d.log 2>&1";
+system "echo 7 8 9 10 | g_energy_d -f ener.edr >g_ener.log 2>&1";
+system "mv energy.xvg energy_p_p.xvg";
+system "tail -n 1 energy_p_p.xvg >> energy_p_p.xvg";
+my @ep_p=&read_ener("energy_p_p.xvg");
+
+&make_solute("initial.gro","final.gro",$lambda-$d_lambda,$n_prot_atoms);
+
+if (-e "traj_mod.gro") {
+	system "rm traj_mod.gro";
+}
+
+&mod_traj("traj.gro","solute_int.gro");
+
+system "mdrun_d -s e_scan_ew.tpr -rerun traj_mod.gro >mdrun_d.log 2>&1";
+
+system "echo 7 8 9 10 | g_energy_d -f ener.edr >g_ener.log 2>&1";
+system "mv energy.xvg energy_pw_n.xvg";
+my @epw_n=&read_ener("energy_pw_n.xvg");
+
+if (-e "prot.gro") {
+  system "rm prot.gro";
+}
+
+system "echo 1 | trjconv_d -s $job.tpr -f traj_mod.gro -o prot.gro -dump 0 >trjconv_d.log 2>&1";
+
+system "mdrun_d -s e_scan_ew_prot.tpr -rerun prot.gro >mdrun_d.log 2>&1";
+system "echo 7 8 9 10 | g_energy_d -f ener.edr >g_ener.log 2>&1";
+system "mv energy.xvg energy_p_n.xvg";
+system "tail -n 1 energy_p_n.xvg >> energy_p_n.xvg";
+my @ep_n=&read_ener("energy_p_n.xvg");
+
+# exit;
+if ($#epw_p!=$#epw_n) {
+  die "Number of records does not match...\n";
+}
+
+my $d_ep=$ep_p[0]-$ep_n[0];
+
+for my $i (0..$#epw_p) {
+    my $dh=($epw_p[$i]-$epw_n[$i]-$d_ep)/2.0/$d_lambda;
+#     print "$dh\n";
+#    $stat->add_data($dh);
+}
+
+system "rm traj_mod.gro";
+
+system "rm traj.gro";
+
+open(OUTP,">energy_p.xvg") or die;
+print OUTP "# pw-p energy +lambda\n";
+open(OUTN,">energy_n.xvg") or die;
+print OUTN "# pw-p energy -lambda\n";
+for my $i (0..$#epw_p) {
+  printf(OUTP "%d %f\n",$i,$epw_p[$i]-$ep_p[0]);
+  printf(OUTN "%d %f\n",$i,$epw_n[$i]-$ep_n[0]);
+}
+close OUTP;
+close OUTN;
+#print $lambda," ",$stat->mean(),"\n";

@@ -1,0 +1,183 @@
+#!/usr/bin/perl -w
+use Statistics::Descriptive;
+
+my $n_steps=16.0;
+my $d_lambda=0.002;
+
+####################################################################
+sub read_ener {
+  my $name=$_[0];
+  open(INP,$name) or die;
+  my $line;
+  my @ener;
+#  system "cp $name en_test_org.dat";
+#  open(OUT,">en_test.dat");
+  do {
+    $line=<INP>;
+   } while (($line=~m/^#/) || ($line=~m/^\@/));
+#    print $line;
+#   my $nr=0;
+  while(<INP>) {
+    my ($t,@e_data)=split;
+    my $e=0.0;
+    foreach my $de (@e_data) {
+	$e+=$de;	
+    }
+ #   print OUT "$t $e\n";
+    push(@ener,$e);
+#     $nr++;
+#     last if ($nr>500);
+  }
+  close INP;
+  #close OUT;
+  return @ener;
+}
+####################################################################
+####################################################################
+
+my $max_boot=100;
+
+my $lambda_step=1.0/$n_steps;
+
+my @lambda;
+
+my @ti;
+
+for my $i (0..$n_steps) {
+  my $f=$i*$lambda_step;
+  $lambda[$i]=$i*$lambda_step;
+}
+
+my @all_dh;
+my @n_rec;
+
+for my $nr (0..$#lambda) {
+  my @ep=&read_ener("run_$lambda[$nr]/energy_p.xvg");
+  my @en=&read_ener("run_$lambda[$nr]/energy_n.xvg");
+  if ($#en!=$#ep) {
+    die "Number of records does not match in run_$lambda[$nr]\n";
+  }
+  push @n_rec,$#en;
+  for my $i (0..$#en) {
+    my $dh=($ep[$i]-$en[$i])/2.0/$d_lambda;
+    push @{$all_dh[$nr]},$dh;
+  }
+}
+
+
+open(OUT,">ti_points.dat");
+
+for my $nr (0..$#lambda) {
+  my $sum=0;
+  for my $i (0..$n_rec[$nr]) {
+    $sum+=$all_dh[$nr][$i];
+  }
+  $ti[$nr]=$sum/($n_rec[$nr]+1);
+  print OUT "$lambda[$nr] $ti[$nr]\n";
+}
+
+close OUT;
+#	simple
+my $int_simple=0;
+for my $nr (0..$#lambda) {
+    $int_simple+=$ti[$nr]*$lambda_step;
+}
+
+
+#	trapez
+my $int_trapez=0.0;
+$int_trapez=$ti[0];
+$int_trapez+=$ti[$#lambda];
+for my $nr (1..$#lambda-1) {
+  $int_trapez+=2.0*$ti[$nr];
+}
+$int_trapez = $int_trapez*($lambda[$#lambda]-$lambda[0])/2.0/$#lambda;
+
+#	simpson
+my $int_simpson=0.0;
+$int_simpson=$ti[0]+$ti[$#lambda];
+for (my $i=1; $i<$#lambda; $i+=2) {
+  $int_simpson+=$ti[$i]*4.0;
+}
+for (my $i=2; $i<$#lambda-1; $i+=2) {
+  $int_simpson+=$ti[$i]*2.0;
+}
+
+$int_simpson=$int_simpson*($lambda[$#lambda]-$lambda[0])/$#lambda/3.0;
+
+print "$int_simple $int_trapez $int_simpson\n";
+# exit;
+
+my $stat_simple= Statistics::Descriptive::Full->new();
+my $stat_trapez = Statistics::Descriptive::Full->new();
+my $stat_simpson = Statistics::Descriptive::Full->new();
+
+#bootstraps
+
+for my $boot (0..$max_boot) {
+@ti=();
+for my $nr (0..$#lambda) {
+  my $sum=0;
+  for my $i (0..$n_rec[$nr]) {
+    $sum+=$all_dh[$nr][int(rand($n_rec[$nr]+1))];
+  }
+  $ti[$nr]=$sum/($n_rec[$nr]+1);
+}
+
+my $int=0;
+for my $nr (0..$#lambda) {
+    $int+=$ti[$nr]*$lambda_step;
+}
+$stat_simple->add_data($int);
+
+#trapez
+
+$int=$ti[0]+$ti[$#lambda];
+for my $nr (1..$#lambda-1) {
+  $int+=2.0*$ti[$nr];
+}
+
+$int= $int*($lambda[$#lambda]-$lambda[0])/2.0/$#lambda;
+
+$stat_trapez->add_data($int);
+#simpson
+
+$int=$ti[0]+$ti[$#lambda];
+for (my $i=1; $i<$#lambda; $i+=2) {
+  $int+=$ti[$i]*4.0;
+}
+for (my $i=2; $i<$#lambda-1; $i+=2) {
+  $int+=$ti[$i]*2.0;
+}
+
+$int=$int*($lambda[$#lambda]-$lambda[0])/$#lambda/3.0;
+$stat_simpson->add_data($int);
+
+}
+print "kJ/mol\n";
+print "simple $int_simple ";
+print $int_simple-$stat_simple->percentile(5)," ",$stat_simple->percentile(95)-$int_simple,"\n";
+
+print "trapez $int_trapez ";
+print $int_trapez-$stat_trapez->percentile(5)," ",$stat_trapez->percentile(95)-$int_trapez,"\n";
+
+print "simpson $int_simpson ";
+print $int_simpson-$stat_simpson->percentile(5)," ",$stat_simpson->percentile(95)-$int_simpson,"\n";
+
+
+print "kcal/mol\n";
+my $kc=4.184;
+print "simple ",$int_simple/$kc;
+my $low=$int_simple-$stat_simple->percentile(5);
+my $hi=$stat_simple->percentile(95)-$int_simple;
+print " ",$low/$kc," ",$hi/$kc,"\n";
+
+print "trapez ",$int_trapez/$kc;
+$low=$int_trapez-$stat_trapez->percentile(5);
+$hi=$stat_trapez->percentile(95)-$int_trapez;
+print " ",$low/$kc," ",$hi/$kc,"\n";
+
+print "simpson ",$int_simpson/$kc;
+$low=$int_simpson-$stat_simpson->percentile(5);
+$hi=$stat_simpson->percentile(95)-$int_simpson;
+print " ",$low/$kc," ",$hi/$kc,"\n";

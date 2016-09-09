@@ -1,0 +1,200 @@
+#!/usr/bin/perl -w
+use strict;
+#script to equilibrate for pmf calculations
+
+my $n_prot_atoms = 1231;
+
+my $n_steps = 16;
+
+my $equ_soft_time = 10;
+my $equ_soft_core = "0.1";
+
+my $solvent_group = "Water";
+my $solute_group = "Protein";
+
+
+###########################################################################3
+sub run_report {
+  my $name=$_[0];
+  printf("%-7s",$name);
+  
+  open(INP,"$name.rep") or die "no $name report file..\n";
+  while(<INP>) {
+     my $line=$_;
+    if ($line=~m/Performance/) {
+      chomp $line;
+      print "$line";
+    }
+  }
+  close INP;
+  
+  open(INP,"$name.prep") or die "no $name preparation file...\n";
+  while(<INP>) {
+    my $line=$_;
+    if ($line=~m/notes/) {
+      chomp $line;
+      print "| $line ";
+    }
+  }
+  close INP;
+  print "\n";
+}
+############################################################################
+sub make_system {
+	my $solute_name=$_[0];
+	my $solvent_name=$_[1];
+	my $n_solute_atoms=$_[2];
+        
+        open(SYST,">system.gro");
+	open(INP,$solute_name) or die;
+	for my $i (0..$n_solute_atoms+1) {
+		my $line=<INP>;
+		print SYST $line;
+	}
+	close INP;
+	open(INP,$solvent_name) or die;
+	for my $i (0..$n_solute_atoms+1) {
+		<INP>;
+	}
+	while(<INP>) {
+		print SYST $_;
+	}
+	close INP;
+	close SYST;
+
+}
+############################################################################
+sub make_equ_soft {
+  my $time=$_[0];
+  
+  unless (-e "equ_soft.mdp") {
+    die "no equ_soft.mdp\n";
+  }
+
+  my $run_steps=$time/0.002;
+  my $delta_lambda=-$equ_soft_core/$run_steps;
+  
+  system "mv equ_soft.mdp equ_soft.tmp";
+  open(INP,"equ_soft.tmp") or die;
+  open(OUT,">equ_soft.mdp");
+  while(<INP>) {
+    if (/^nsteps/) {
+      print OUT "nsteps          = $run_steps\n";
+      next;
+    }
+    if (/^delta-lambda/) {
+      print OUT "delta-lambda            = $delta_lambda\n";
+      next;
+    }
+    if (/^init-lambda/) {
+      print OUT "init-lambda            = $equ_soft_core\n";
+      next;
+    }
+    print OUT $_;
+  }
+  close OUT;
+  close INP;
+  system "rm equ_soft.tmp";
+}
+############################################################################
+sub set_thermostat {
+  my $file=$_[0];
+  unless (-e $file) {
+    die "no $file\n";
+  }
+  system "mv $file $file.tmp";
+  open(INP,"$file.tmp") or die;
+  open(OUT,">$file");
+  while(<INP>) {
+    if (/^tc-grps/) {
+      print OUT "tc-grps         = $solvent_group $solute_group\n";
+      next;
+    }
+    print OUT $_;
+  }
+  close INP;
+  close OUT;
+}
+###########################################################################
+###########################################################################
+my $input_dir="input";
+my $output_dir="fen_data";
+
+if (-e $output_dir) {
+  print "$output_dir already exists please check...\n";
+} else {
+  system "mkdir $output_dir";
+}
+
+
+my $d_lambda=1.0/$n_steps;
+
+my @lambda;
+
+print "$n_prot_atoms selected as solute atoms\n";
+print "Calculation will require ",$n_steps+1," steps\n";
+
+
+
+for my $i (0..$n_steps) {
+  my $f=$i*$d_lambda;
+  $lambda[$i]=$i*$d_lambda;
+}
+
+my $lambda_ini=0;
+for (my $n=0; $n<=$#lambda; $n++) {
+
+  if (-e "equ_$lambda[$n]/equ_soft.mdp") {
+    next;
+  }
+  
+  system "mkdir equ_$lambda[$n]";
+  chdir "equ_$lambda[$n]";
+  
+  print "\nlambda $n $lambda[$n] started -------------\n";
+
+  system "cp -r ../input/* .";
+
+if ($n==$lambda_ini) {
+    system "cp initial.gro system.gro";
+ } else {
+     system "cp ../equ_$lambda[$n-1]/equ.gro ./previous.gro";
+        #make restraints
+     system "./restraint_interpolator initial.gro final.gro $lambda[$n]";
+    &make_system("restr.gro","previous.gro",$n_prot_atoms);
+ }
+ 
+
+  
+  #set set_thermostat groups for all mdp files
+  my @mdp_files=("equ_soft","nvt","equ","prod");
+  foreach my $file (@mdp_files) {
+    &set_thermostat("$file.mdp");
+  }
+  
+  if ($equ_soft_time>0) {
+  #set time and delta lambda in equ_soft
+    &make_equ_soft($equ_soft_time);
+  #equ_soft 
+    system "grompp -f equ_soft.mdp -c system.gro -p topology.top -o equ_soft.tpr -maxwarn 2 >equ_soft.prep 2>&1";
+    system "mdrun -deffnm equ_soft >equ_soft.rep 2>&1";
+    &run_report("equ_soft");
+  #nvt run
+    system "grompp -f nvt.mdp -c equ_soft.gro -p topology.top -o nvt.tpr -t equ_soft.cpt -maxwarn 1 >nvt.prep 2>&1";
+    system "mdrun -deffnm nvt >nvt.rep 2>&1";
+    &run_report("nvt");
+  } else {
+    #nvt run
+    system "grompp -f nvt.mdp -c system.gro -p topology.top -o nvt.tpr -maxwarn 1 >nvt.prep 2>&1";
+    system "mdrun -deffnm nvt >nvt.rep 2>&1";
+    &run_report("nvt");
+  }
+#equilibration
+  system "grompp -f equ.mdp -c nvt.gro -p topology.top -t nvt.cpt -o equ.tpr -maxwarn 1 >equ.prep 2>&1";
+  system "mdrun -deffnm equ >equ.rep 2>&1";
+  &run_report("equ"); 
+    
+  chdir "..";
+}
+exit;
+

@@ -1,0 +1,26 @@
+#!/usr/bin/perl -w
+
+my $initial=$ARGV[0];
+my $final=$ARGV[1];
+
+
+system "echo 1 1 | trjconv -f $final -s $initial -fit rot+trans -o final_tmp.gro > fit.log 2>&1";
+
+system "head -n 2 $initial >final.gro";
+
+system "tail -n +3 final_tmp.gro | head -n -1 >> final.gro";
+
+open(OUT,">>final.gro") or die;
+open(INP,$initial) or die;
+
+my $line=<INP>;
+do {
+  $line=<INP>;
+} while ($line !~m/SOL/);
+
+print OUT $line;
+while(<INP>) {
+  print OUT $_;
+}
+close INP;
+close OUT;
